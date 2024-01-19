@@ -94,7 +94,7 @@ class App extends React.Component {
                              onSizeIncrement={this.onSizeIncrement}
                               onCharSelected={this.onCharSelected}/>
                             <ErrorBoundary>
-                                <CharInfo charId={this.selectedChar}/>
+                                <CharInfo charId={this.state.selectedChar}/>
                             </ErrorBoundary>
                             
                         </div>
