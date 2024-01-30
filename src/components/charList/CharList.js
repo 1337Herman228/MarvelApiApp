@@ -1,104 +1,133 @@
-import './charList.scss';
-import React from 'react';
-import MarvelService from '../../services/MarvelService';
+import {useState, useEffect, useRef} from 'react';
+import PropTypes from 'prop-types';
+// import { Transition } from 'react-transition-group';
+
 import Spinner from '../spinner/Spinner';
 import ErrorMessage from '../errorMessage/ErrorMessage';
+import useMarvelService from '../../services/MarvelService';
+import './charList.scss';
 
-const CharList = ({onCharSelected, onSizeIncrement, size, liRefs, whatCharSelected}) => {
+// const duration = 300;
+
+// const defaultStyle = {
+//   transition: `all ${duration}ms ease-in-out`,
+// //   opacity: 1,
+// //   visibility: 'visible'
+// }
+
+// const transitionStyles = {
+//   entering: { opacity: 0, visibility: 'hidden' },
+//   entered:  { opacity: 1, visibility: 'visible' },
+// };
+
+const CharList = (props) => {
+
+    const [charList, setCharList] = useState([]);
+    const [newItemLoading, setNewItemLoading] = useState(false);
+    const [offset, setOffset] = useState(210);
+    const [charEnded, setCharEnded] = useState(false);
+
+    const {loading, error, getAllCharacters} = useMarvelService();
+
+    useEffect(() => {
+        onRequest(offset, true);
+    }, [])
+
+    const onRequest = (offset, initial) => {
+        initial ? setNewItemLoading(false) : setNewItemLoading(true);
+        getAllCharacters(offset)
+            .then(onCharListLoaded)
+    }
+
+    const onCharListLoaded = (newCharList) => {
+        let ended = false;
+        if (newCharList.length < 9) {
+            ended = true;
+        }
+
+        setCharList(charList => [...charList, ...newCharList]);
+        setNewItemLoading(newItemLoading => false);
+        setOffset(offset => offset + 9);
+        setCharEnded(charEnded => ended);
+    }
+
+    const itemRefs = useRef([]);
+
+    const focusOnItem = (id) => {
+        // Я реализовал вариант чуть сложнее, и с классом и с фокусом
+        // Но в теории можно оставить только фокус, и его в стилях использовать вместо класса
+        // На самом деле, решение с css-классом можно сделать, вынеся персонажа
+        // в отдельный компонент. Но кода будет больше, появится новое состояние
+        // и не факт, что мы выиграем по оптимизации за счет бОльшего кол-ва элементов
+
+        // По возможности, не злоупотребляйте рефами, только в крайних случаях
+        itemRefs.current.forEach(item => item.classList.remove('char__item_selected'));
+        itemRefs.current[id].classList.add('char__item_selected');
+        itemRefs.current[id].focus();
+    }
+
+    // Этот метод создан для оптимизации, 
+    // чтобы не помещать такую конструкцию в метод render
+    function renderItems(arr) {
+        const items =  arr.map((item, i) => {
+            let imgStyle = {'objectFit' : 'cover'};
+            if (item.thumbnail === 'http://i.annihil.us/u/prod/marvel/i/mg/b/40/image_not_available.jpg') {
+                imgStyle = {'objectFit' : 'unset'};
+            }
+            
+            return (
+                <li 
+                    className="char__item"
+                    tabIndex={0}
+                    ref={el => itemRefs.current[i] = el}
+                    key={item.id}
+                    onClick={() => {
+                        props.onCharSelected(item.id);
+                        focusOnItem(i);
+                    }}
+                    onKeyPress={(e) => {
+                        if (e.key === ' ' || e.key === "Enter") {
+                            props.onCharSelected(item.id);
+                            focusOnItem(i);
+                        }
+                    }}>
+                
+                    <img src={item.thumbnail} alt={item.name} style={imgStyle}/>
+                    <div className="char__name">{item.name}</div>
+                </li>
+            )
+        });
+        // А эта конструкция вынесена для центровки спиннера/ошибки
+        return (
+            <ul className="char__grid">
+                {items}
+            </ul>
+        )
+    }
+    
+    const items = renderItems(charList);
+
+    const errorMessage = error ? <ErrorMessage/> : null;
+    const spinner = loading && !newItemLoading ? <Spinner/> : null;
 
     return (
         <div className="char__list">
-            <ul className="char__grid">
-
-            {Array.from({ length: size }).map((_, index) => (
-                <Li key={index} ref={liRefs[index]} whatCharSelected={whatCharSelected} onCharSelected={onCharSelected}/>
-            ))}
-
-            </ul>
-            <button onClick={()=> onSizeIncrement()} className="button button__main button__long">
+            {errorMessage}
+            {spinner}
+            {items}
+            <button 
+                className="button button__main button__long"
+                disabled={newItemLoading}
+                style={{'display': charEnded ? 'none' : 'block'}}
+                onClick={() => onRequest(offset)}>
                 <div className="inner">load more</div>
             </button>
         </div>
     )
 }
 
-class Li extends React.Component{
-
-    state={
-        char:{},
-        loading: true,
-        error: false,
-        selected: false,
-    }
-
-    getCharId = ()=>{
-        return this.state.char.id
-    }
-
-    componentDidMount(){
-       this.updateChar()
-    }
-
-    onSelectComponent = ()=>{
-        console.log('onSelectComponent компонента CharList')
-        this.setState({selected:true})
-    }
-    onUnSelectComponent = ()=>{
-        this.setState({selected:false})
-    }
-
-    marvelService = new MarvelService()
-
-    onCharLoaded = (char)=>{
-        console.log('update')
-        this.setState({char, loading:false})
-    }
-    onError = () =>{
-        this.setState({error:true, loading:false})
-    }
-    updateChar = () =>{
-        const id = Math.floor(Math.random() * (1011400 - 1011000) + 1011000)
-        this.marvelService
-        .getCharacter(id)
-        .then(this.onCharLoaded)
-        .catch(this.onError)
-    }
-
-    render(){
-        const {onCharSelected, whatCharSelected} = this.props
-        const {char, loading,error} = this.state
-
-        const errorMessage = error ? <ErrorMessage newStyle={{width:200, height:318}}/> : null
-        const spinner = loading ? <Spinner/> : null
-        const content = !(loading || error) ? <View whatCharSelected={whatCharSelected} selected={this.state.selected} onCharSelected={onCharSelected} char={char}/> : null
-
-        return(
-            <>
-            {errorMessage}
-            {spinner}
-            {content}
-            </>
-        )
-    }
-}
-
-const View = ({char, onCharSelected, selected, whatCharSelected }) =>{
-
-    const {name,thumbnail,id}=char
-    const imgStyle = thumbnail=='http://i.annihil.us/u/prod/marvel/i/mg/b/40/image_not_available.jpg' ? {objectFit:'unset'}:{objectFit:'cover'}
-    const selectedClass = selected ? 'selected' : ''
-
-    const  onClickFunc = async (id)=>{
-        await onCharSelected(id);
-        whatCharSelected();
-    }
-
-    return (
-        <li tabIndex={0} className={"char__item" + ' ' + selectedClass} key={id} onClick={() => {onClickFunc(id)}} onKeyDown={(event) => {event.key === 'Enter' && onClickFunc(id)}}>
-            <img style={imgStyle} src={thumbnail} alt={name}/>
-        <div className="char__name">{name}</div>
-        </li>
-    )
+CharList.propTypes = {
+    onCharSelected: PropTypes.func.isRequired
 }
 
 export default CharList;
